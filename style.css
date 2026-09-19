@@ -71,3 +71,68 @@ dialog .notice p{margin:4px 0}
 @media(max-width:767px){.imp-grid{grid-template-columns:1fr 1fr}.memo-box .actions{flex-wrap:wrap}.memo-box .actions [data-act=memo-save]{flex:1;min-height:46px}.memo-box #memo-search{flex-basis:100%}}
 @media(hover:none){button:hover{background:inherit}.primary:hover{background:#315b4c}.check:hover,.star:hover{background:transparent}}
 @media(prefers-reduced-motion:reduce){*{scroll-behavior:auto!important}}
+
+/* ===== APP UI 保真度（对照实机截图） ===== */
+nav button.active span{background:#f3e9cd}
+nav button.active{color:#1c1c17;font-weight:700}
+.task .star{color:#8b8f7f}
+.task .star.on{color:#e0a414}
+.section-head h2{font-size:24px;letter-spacing:-.5px;margin:6px 0 0}
+.section-head .count{font-size:15px;background:transparent;color:#315b4c;padding:0;margin-left:2px;font-weight:700}
+.section-sub{margin:2px 0 14px;color:var(--muted);font-size:14px;line-height:1.6;flex-basis:100%}
+.section-head{flex-wrap:wrap;align-items:baseline;row-gap:2px}
+.section-head .actions{margin-left:auto}
+.sleep-home{display:flex;align-items:center;gap:14px;background:#fff;border:1px solid var(--line);border-radius:14px;padding:16px;margin:0 0 24px}
+.sleep-home .sleep-icon{width:40px;height:40px;flex:0 0 40px;display:grid;place-items:center;color:#315b4c}
+.sleep-home .sleep-icon svg{width:26px;height:26px}
+.sleep-home h3{font-size:17px;margin:0}
+.sleep-home p{margin:3px 0 0;font-size:14px;color:var(--muted)}
+.sleep-home .sleep-view{color:#315b4c;background:transparent;border:0;font-size:16px;min-height:44px}
+.today-done{background:#fff;border:1px solid var(--line);border-radius:14px;padding:4px 16px;margin:6px 0 0}
+.today-done summary{list-style:none;display:flex;align-items:center;gap:10px;padding:14px 0;min-height:44px;cursor:pointer}
+.today-done summary::-webkit-details-marker{display:none}
+.today-done summary b{font-size:18px}
+.page-tools{margin:14px 0 18px}
+.page-tools input{background:#fff;border:1px solid #9aa89b;border-radius:10px;min-height:52px;font-size:16px;padding:12px 14px}
+.chip-row{display:flex;gap:8px;overflow-x:auto;padding:12px 2px 4px;-webkit-overflow-scrolling:touch;scrollbar-width:none}
+.chip-row::-webkit-scrollbar{display:none}
+.chip{flex:0 0 auto;border:1px solid #b9c4b6;background:#fff;border-radius:22px;padding:9px 16px;min-height:40px;font-size:14px;color:#3c4a42}
+.chip.on{background:#f3e9cd;border-color:#e5d6a8;color:#3c3517;font-weight:600}
+.tag.line{background:#fff;border:1px solid #c2cdc0;color:#44544a}
+.day-head{font-size:18px;margin:22px 0 10px;letter-spacing:-.3px}
+.raw-status{color:#315b4c}
+@media(max-width:767px){
+ h1{font-size:30px}
+ .section-head{align-items:flex-start}
+ .section-head h2{font-size:22px}
+ .task .preview{color:#4d5c50}
+ .page-tools input{min-height:50px}
+}
+
+/* 完成按钮：待办时为细描边圆圈，完成后填充绿色并出现白勾（参考 Things 3 的圆圈勾选模式） */
+.task .check{transition:background .15s ease,border-color .15s ease}
+@media(max-width:767px){
+ .task:not(.done) .check{background:transparent;color:transparent}
+ .task:not(.done) .check::before{background:#fdfdfb;border:1.7px solid #a5b6a8}
+ .task:not(.done) .check:active::before{background:#e7eee5}
+ .task.done .check{background:transparent;color:#fff}
+ .task.done .check{font-size:17px}
+ .task.done .check::before{background:#315b4c;border:1.7px solid #315b4c}
+}
+@media(min-width:768px){
+ .task:not(.done) .check{background:#fdfdfb;border:1.6px solid #a5b6a8;color:transparent}
+ .task:not(.done) .check:hover{border-color:#7d9483}
+ .task.done .check{background:#315b4c;border:1.6px solid #315b4c;color:#fff}
+}
+
+/* ===== 资料模块：首页折叠快捷区与置顶 ===== */
+.ref-quick{background:#fff;border:1px solid var(--line);border-radius:14px;padding:4px 16px 8px;margin:14px 0 0}
+.ref-quick summary{list-style:none;display:flex;align-items:center;gap:8px;padding:14px 0;min-height:44px;cursor:pointer;font-size:17px;font-weight:600}
+.ref-quick summary::-webkit-details-marker{display:none}
+.ref-quick summary .muted{font-size:13px;font-weight:400}
+.ref-item{display:flex;align-items:center;gap:8px;width:100%;text-align:left;background:#f5f6f2;border:0;border-radius:9px;padding:12px 14px;margin:0 0 7px;min-height:44px;font-size:15px;color:inherit}
+.ref-item .ref-title{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.ref-item:active{background:#e7eee5}
+.ref-all{display:block;width:100%;background:transparent;border:0;color:var(--green);font-size:15px;min-height:44px;text-align:center}
+.record.pinned{border-left:3px solid #d9b64a;padding-left:12px}
+@media(max-width:767px){.ref-quick{margin-top:16px}}
