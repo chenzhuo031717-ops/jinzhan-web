@@ -1,10 +1,11 @@
-export const VERSION='6.9.10';
+export const VERSION='6.9.16';
 export const uid=()=>globalThis.crypto?.randomUUID?.() || `jz-${Date.now()}-${Math.random().toString(36).slice(2)}`;
 export const clone=x=>JSON.parse(JSON.stringify(x));
+export const esc=value=>String(value??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 export const today=()=>new Intl.DateTimeFormat('en-CA',{timeZone:'Asia/Shanghai',year:'numeric',month:'2-digit',day:'2-digit'}).format(new Date());
 export function fresh(){return {format:'jinzhan-web',schema:1,version:VERSION,revision:0,raws:[],tasks:[],cognitions:[],facts:[],sleep:[],bridges:[],memos:[],settings:{model:'deepseek-v4-flash',memory:true}};}
 // 旧版本写入的存量数据缺少新增键（如 memos），读取时统一归一，避免升级后新模块坏死
-export function normalizeState(s){if(!s||typeof s!=='object')return s;if(!Array.isArray(s.memos))s.memos=[];if(!Array.isArray(s.bridges))s.bridges=[];return s;}
+export function normalizeState(s){if(!s||typeof s!=='object')return s;if(!Array.isArray(s.memos))s.memos=[];if(!Array.isArray(s.bridges))s.bridges=[];s.version=VERSION;return s;}
 const string=(x)=>typeof x==='string'?x:'';
 const list=(x)=>Array.isArray(x)?x:[];
 export function validDate(s){if(s==null||s==='')return true;if(!/^\d{4}-\d{2}-\d{2}$/.test(s))return false;const d=new Date(s+'T12:00:00Z');return !isNaN(d)&&d.toISOString().slice(0,10)===s;}
@@ -16,13 +17,32 @@ export function resultFromAI(x){
  const reflection=string(x.reflection);if(!tasks.length&&!cognitions.length&&!reflection.trim())throw Error('没有可保存的内容；原文已保留');return {tasks,cognitions,reflection};
 }
 export function displayTime(t){
+ if(t.scheduleOverride){
+  const parts=[t.nextDate||t.date,t.nextTime||t.time].filter(Boolean);
+  if(t.recurrenceDays?.length)parts.push('每周'+t.recurrenceDays.map(n=>'一二三四五六日'[n-1]).join('、')+(t.recurrenceTime?' '+t.recurrenceTime:''));
+  return parts.join(' · ')||'待安排';
+ }
  if(t.timeText?.trim()){const tt=t.timeText.trim();if(t.recurrenceDays?.length&&t.recurrenceTime&&!/(\d{1,2}[:：]\d{2})|(\d{1,2}点)/.test(tt))return tt+' '+t.recurrenceTime;return tt;}
  if(t.recurrenceDays?.length)return '每周'+t.recurrenceDays.map(n=>'一二三四五六日'[n-1]).join('、')+(t.recurrenceTime?' '+t.recurrenceTime:'');
  return [t.nextDate||t.date,t.nextTime||t.time].filter(Boolean).join(' ');
 }
 export function taskHeading(t){const time=displayTime(t);return time&&!t.title.includes(time)?`${time} · ${t.title}`:t.title;}
 export function bucket(t,date=today()){const d=t.nextDate||t.date;if(t.status==='completed')return 'done';if(d&&d<=date)return 'today';if(d)return 'future';if(t.recurrenceDays?.length){const weekday=new Date(date+'T12:00:00Z').getUTCDay()||7;return t.recurrenceDays.includes(weekday)?'today':'future';}return 'unscheduled';}
-export function patchTask(task,changes){const allowed=['title','details','timeText','nextDate','nextTime','dueDate','dueTime','tags','group','isImportant','recurrenceDays','recurrenceTime'];const next={...task};for(const k of allowed)if(Object.hasOwn(changes,k))next[k]=changes[k];validateTask(next);const edited=['nextDate','nextTime','recurrenceDays','recurrenceTime'].some(k=>Object.hasOwn(changes,k)&&JSON.stringify(task[k])!==JSON.stringify(changes[k]));if(edited&&task.status!=='completed'&&task.status!=='waiting_confirmation')next.status=next.nextDate||next.recurrenceDays?.length?'pending':'unscheduled';if(edited&&Object.hasOwn(changes,'nextDate')){next.date=null;next.time=null;}return {...next,updatedAt:Date.now()};}
+export function patchTask(task,changes){
+ const allowed=['title','details','timeText','nextDate','nextTime','dueDate','dueTime','tags','group','isImportant','recurrenceDays','recurrenceTime'];
+ const next={...task};for(const k of allowed)if(Object.hasOwn(changes,k))next[k]=changes[k];validateTask(next);
+ const edited=['nextDate','nextTime','recurrenceDays','recurrenceTime'].some(k=>Object.hasOwn(changes,k)&&JSON.stringify(k==='nextDate'?(task.nextDate||task.date||null):k==='nextTime'?(task.nextTime||task.time||null):task[k])!==JSON.stringify(changes[k]));
+ if(edited){
+  // Normalize aliases without clearing an unedited clock or reviving a cleared one.
+  next.nextDate=Object.hasOwn(changes,'nextDate')?changes.nextDate:(task.nextDate||task.date||null);
+  next.nextTime=Object.hasOwn(changes,'nextTime')?changes.nextTime:(task.nextTime||task.time||null);
+  next.date=null;next.time=null;
+  next.scheduleOverride=!(Object.hasOwn(changes,'timeText')&&changes.timeText!==task.timeText);
+  next.scheduleHistory=[...(task.scheduleHistory||[]),{createdAt:Date.now(),date:task.nextDate||task.date||null,time:task.nextTime||task.time||null,timeText:task.timeText||'',recurrenceDays:task.recurrenceDays||[],recurrenceTime:task.recurrenceTime||null}];
+  if(task.status!=='completed'&&task.status!=='waiting_confirmation')next.status=next.nextDate||next.recurrenceDays?.length?'pending':'unscheduled';
+ }else if(Object.hasOwn(changes,'timeText')&&changes.timeText!==task.timeText)next.scheduleOverride=false;
+ return {...next,updatedAt:Date.now()};
+}
 export function addRaw(s,text){if(!text.trim())throw Error('先写一点内容');const r={id:uid(),content:text,createdAt:Date.now(),status:'draft',candidate:null};s.raws.unshift(r);return r.id;}
 export function applyNewResult(s,sourceId,result){const raw=s.raws.find(r=>r.id===sourceId);if(!raw)throw Error('原始记录不存在');if(raw.status==='saved')return false;const v=resultFromAI(result);const now=Date.now();for(const t of v.tasks)s.tasks.unshift({...t,id:uid(),sourceId,createdAt:now,updatedAt:now,completedAt:null,isImportant:false,updates:[],group:''});for(const c of v.cognitions)s.cognitions.unshift({...c,id:uid(),sourceId,createdAt:now,updatedAt:now,versions:[]});raw.status='saved';raw.reflection=v.reflection;raw.candidate=null;raw.error=null;return true;}
 export function sourceCandidate(s,sourceId){const r=s.raws.find(r=>r.id===sourceId);if(!r)throw Error('原文不存在');if(r.status!=='saved')return clone(r.candidate||{tasks:[],cognitions:[],reflection:r.reflection||''});return {tasks:clone(s.tasks.filter(t=>t.sourceId===sourceId)),cognitions:clone(s.cognitions.filter(c=>c.sourceId===sourceId)),reflection:r.reflection||''};}
@@ -32,14 +52,45 @@ export function correctSource(s,sourceId,candidate,roundId){const raw=s.raws.fin
  const kept=new Set(candidate.tasks.filter(t=>oldTasks.has(t.id)).map(t=>t.id));
  for(const t of before.tasks)if(!kept.has(t.id)&&(t.updates?.length||t.completedAt||t.status==='completed'||t.group))throw Error('已有进展或分组的行动不能从这里移除；可以单独修改认知');
  for(const c of before.cognitions)if(!candidate.cognitions.some(v=>v.id===c.id))throw Error('已有认知请到认知页单独处理，避免丢失历史');
- const now=Date.now();const tasks=candidate.tasks.map(t=>{validateTask(t);const old=oldTasks.get(t.id);return old?patchTask(old,t):{...t,id:uid(),sourceId,createdAt:now,updatedAt:now,status:t.nextDate||t.recurrenceDays?.length?'pending':'unscheduled',updates:[],completedAt:null,isImportant:false};});
+ const now=Date.now();const tasks=candidate.tasks.map(t=>{validateTask(t);const old=oldTasks.get(t.id);return old?patchTask(old,Object.fromEntries(Object.entries(t).filter(([k,v])=>JSON.stringify(v)!==JSON.stringify(old[k])||t.scheduleEdits?.includes(k)))):{...t,id:uid(),sourceId,createdAt:now,updatedAt:now,status:t.nextDate||t.recurrenceDays?.length?'pending':'unscheduled',updates:[],completedAt:null,isImportant:false};});
  const cognitions=candidate.cognitions.map(c=>{if(!c.title?.trim()||!c.content?.trim())throw Error('认知标题和正文不能为空');const old=oldCognitions.get(c.id);if(!old)return {...c,id:uid(),sourceId,createdAt:now,updatedAt:now,versions:[]};return editCognition(old,c);});
  s.tasks=s.tasks.filter(t=>t.sourceId!==sourceId).concat(tasks);s.cognitions=s.cognitions.filter(c=>c.sourceId!==sourceId).concat(cognitions);raw.reflection=candidate.reflection||'';raw.lastRound=roundId;
  if(s.settings.memory&&JSON.stringify(before)!==JSON.stringify(candidate))s.facts.unshift({id:uid(),sourceId,input:raw.content,before,after:clone(candidate),createdAt:now});return true;
 }
 export function editCognition(old,c){if(!c.title?.trim()||!c.content?.trim())throw Error('认知标题和正文不能为空');const changed=old.title!==c.title||old.content!==c.content;return {...old,title:c.title,content:c.content,tags:c.tags??old.tags,updatedAt:Date.now(),versions:changed?[...(old.versions||[]),{title:old.title,content:old.content,tags:old.tags,createdAt:Date.now()}]:(old.versions||[])};}
-export function appendUpdate(s,id,update){const t=s.tasks.find(t=>t.id===id);if(!t)throw Error('行动不存在');if(!update.content?.trim())throw Error('进展不能为空');if(t.updates.some(u=>u.id===update.id))return false;t.updates.push({...update,id:update.id||uid(),createdAt:Date.now()});t.updatedAt=Date.now();if(update.scheduleIntent==='schedule'){validateTask({...t,nextDate:update.nextDate,nextTime:update.nextTime});t.nextDate=update.nextDate||null;t.nextTime=update.nextTime||null;t.date=null;t.time=null;t.timeText=update.timeText||'';}else if(update.scheduleIntent==='unscheduled'){t.date=null;t.time=null;t.nextDate=null;t.nextTime=null;t.timeText='';}return true;}
-export function toggleDone(s,id){const t=s.tasks.find(t=>t.id===id);if(!t)throw Error('行动不存在');if(t.status==='completed'){t.status=t.previousStatus||'unscheduled';t.completedAt=null;return;}if(t.recurrenceDays?.length){t.updates.push({id:uid(),content:'完成本次周期行动',createdAt:Date.now(),kind:'completion'});const d=new Date(today()+'T12:00:00Z');for(let i=1;i<=7;i++){d.setUTCDate(d.getUTCDate()+1);if(t.recurrenceDays.includes(d.getUTCDay()||7)){t.nextDate=d.toISOString().slice(0,10);break;}}t.nextTime=t.recurrenceTime||null;t.updatedAt=Date.now();}else{t.previousStatus=t.status;t.status='completed';t.completedAt=Date.now();}}
+export function appendUpdate(s,id,update){
+ const t=s.tasks.find(t=>t.id===id);if(!t)throw Error('行动不存在');if(!update.content?.trim())throw Error('进展不能为空');if(t.updates.some(u=>u.id===update.id))return false;
+ let next=t;
+ if(update.scheduleIntent==='schedule'||update.scheduleIntent==='unscheduled'){
+  const cancel=update.scheduleIntent==='unscheduled';
+  next=patchTask(t,{nextDate:cancel?null:update.nextDate||null,nextTime:cancel?null:update.nextTime||null,timeText:cancel?'':update.timeText||'',...(cancel?{recurrenceDays:[],recurrenceTime:null}:{})});
+ }
+ Object.assign(t,next);t.updates.push({...update,id:update.id||uid(),createdAt:Date.now()});t.updatedAt=Date.now();return true;
+}
+const scheduleSnapshot=t=>({nextDate:t.nextDate??null,nextTime:t.nextTime??null,date:t.date??null,time:t.time??null,recurrenceDays:t.recurrenceDays||[],recurrenceTime:t.recurrenceTime??null});
+export function toggleDone(s,id,intent){
+ const t=s.tasks.find(t=>t.id===id);if(!t)throw Error('行动不存在');
+ const done=t.status==='completed'||periodicDoneToday(t);
+ const undo=intent?intent==='undo':done;
+ if(undo&&!done||!undo&&done)return false;
+ const now=Date.now();
+ if(t.status==='completed'){const date=localDateOf(t.completedAt);for(const u of t.updates||[])if(u.kind==='completion'&&!u.cancelledAt&&localDateOf(u.createdAt)===date)u.cancelledAt=now;t.status=t.previousStatus||'unscheduled';t.completedAt=null;t.updatedAt=now;return true;}
+ if(t.recurrenceDays?.length){
+  if(undo){
+   const entries=t.updates.filter(u=>u.kind==='completion'&&!u.cancelledAt&&localDateOf(u.createdAt)===today());
+   const first=entries[0],last=entries.at(-1);
+   if(last?.afterSchedule&&JSON.stringify(scheduleSnapshot(t))===JSON.stringify(last.afterSchedule))Object.assign(t,clone(first.beforeSchedule));
+   else if(!last?.afterSchedule){t.nextDate=today();t.nextTime=t.recurrenceTime||null;}
+   entries.forEach(u=>{u.cancelledAt=now;}); // Audit history is retained, including legacy duplicates.
+  }else{
+   const beforeSchedule=scheduleSnapshot(t);const d=new Date(today()+'T12:00:00Z');
+   for(let i=1;i<=7;i++){d.setUTCDate(d.getUTCDate()+1);if(t.recurrenceDays.includes(d.getUTCDay()||7)){t.nextDate=d.toISOString().slice(0,10);break;}}
+   t.nextTime=t.recurrenceTime||null;
+   t.updates.push({id:uid(),content:'完成本次周期行动',createdAt:now,kind:'completion',beforeSchedule,afterSchedule:scheduleSnapshot(t)});
+  }
+ }else{t.previousStatus=t.status;t.status='completed';t.completedAt=now;}
+ t.updatedAt=now;return true;
+}
 export function recallFacts(s,text){if(!s.settings.memory)return [];const grams=x=>new Set(Array.from(x).slice(0,-1).map((c,i)=>x.slice(i,i+2)).filter(g=>/[\u4e00-\u9fffA-Za-z]/.test(g)));const q=grams(text);return s.facts.map(f=>({f,score:[...grams(f.input)].filter(g=>q.has(g)).length})).filter(x=>x.score>=3).sort((a,b)=>b.score-a.score).slice(0,2).map(x=>x.f);}
 export function explicitConflict(text,result){
  // Only explicit whole-input totals; ordinal words are never a cap. Later additions defer to semantics.
@@ -65,7 +116,7 @@ export function isPeriodic(t){return Array.isArray(t.recurrenceDays)&&t.recurren
 export function weekdayOf(date=today()){return new Date(date+'T12:00:00Z').getUTCDay()||7;}
 export function periodicDueToday(t,date=today()){if(!isPeriodic(t)||t.status==='completed')return false;if(t.nextDate)return t.nextDate<=date;return t.recurrenceDays.includes(weekdayOf(date));}
 export function localDateOf(ms){if(!Number.isFinite(ms))return '';return new Intl.DateTimeFormat('en-CA',{timeZone:'Asia/Shanghai',year:'numeric',month:'2-digit',day:'2-digit'}).format(new Date(ms));}
-export function periodicDoneToday(t,date=today()){if(!isPeriodic(t))return false;if((t.updates||[]).some(u=>u.kind==='completion'&&localDateOf(u.createdAt)===date))return true;return t.status==='completed'&&Number.isFinite(t.completedAt)&&localDateOf(t.completedAt)===date;}
+export function periodicDoneToday(t,date=today()){if(!isPeriodic(t))return false;if((t.updates||[]).some(u=>u.kind==='completion'&&!u.cancelledAt&&localDateOf(u.createdAt)===date))return true;return t.status==='completed'&&Number.isFinite(t.completedAt)&&localDateOf(t.completedAt)===date;}
 
 // ---------- 备忘录（纯记录，不整理、不提醒） ----------
 export function addMemo(s,text){if(!String(text||'').trim())throw Error('先写一点内容');const m={id:uid(),content:String(text).trim(),createdAt:Date.now(),updatedAt:Date.now()};s.memos.unshift(m);return m.id;}
@@ -234,3 +285,22 @@ export function planAndroidImport(s,data){
  const imported={raws:changes.raws.length,tasks:changes.tasks.length,cognitions:changes.cognitions.length,sleep:changes.sleep.length,updates:changes.tasks.reduce((n,t)=>n+t.updates.length,0)+appendedUpdates,versions:changes.cognitions.reduce((n,c)=>n+c.versions.length,0)+appendedVersions,appendedUpdates,appendedVersions};
  return {info,changes,skipped,warnings,imported,marker:{exportedAt:info.exportedAt,dbVersion:info.dbVersion,appVersionName:info.appVersionName,importedAt:Date.now(),counts:imported}};
 }
+
+// Review and sleep share the same local date semantics as the home page.
+export function shiftDate(date,days){if(!date||!validDate(date))throw Error('日期无效');const d=new Date(date+'T12:00:00Z');d.setUTCDate(d.getUTCDate()+days);return d.toISOString().slice(0,10);}
+export function completedOn(t,date){return t.status==='completed'&&localDateOf(t.completedAt)===date||(t.updates||[]).some(u=>u.kind==='completion'&&!u.cancelledAt&&localDateOf(u.createdAt)===date);}
+export function reviewDay(s,date){return {done:s.tasks.filter(t=>completedOn(t,date)),reflections:s.raws.filter(r=>localDateOf(r.createdAt)===date&&r.reflection?.trim()),progress:s.tasks.filter(t=>t.updates.some(u=>u.kind!=='completion'&&localDateOf(u.createdAt)===date)),sleep:s.sleep.filter(r=>!r.deletedAt&&r.date===date)};}
+export function searchReview(s,query){const q=query.trim().toLowerCase();if(!q)return [];return s.raws.filter(r=>[r.content,r.originalContent,r.reflection,...s.tasks.filter(t=>t.sourceId===r.id).flatMap(t=>[t.title,t.details,...t.updates.flatMap(u=>[u.content,u.nextStep])]),...s.cognitions.filter(c=>c.sourceId===r.id).flatMap(c=>[c.title,c.content])].some(v=>String(v||'').toLowerCase().includes(q))).sort((a,b)=>b.createdAt-a.createdAt);}
+export function sleepHours(r){return (Date.parse(r.wakeAt+'+08:00')-Date.parse(r.sleepAt+'+08:00'))/3600000;}
+export function saveSleep(s,row,original=null){
+ if(!row.date||!validDate(row.date))throw Error('请选择归属日期');
+ for(const value of [row.sleepAt,row.wakeAt])if(!/^\d{4}-\d{2}-\d{2}T([01]\d|2[0-3]):[0-5]\d$/.test(value||'')||!validDate(value.slice(0,10)))throw Error('请填写完整的睡觉和起床时间');
+ if(!(sleepHours(row)>0))throw Error('起床时间应晚于睡觉时间');
+ const index=s.sleep.findIndex(r=>r.id===row.id);
+ if(original&&(index<0||JSON.stringify(s.sleep[index])!==JSON.stringify(original)))throw Error('这条睡眠记录已变化，请重新打开后编辑');
+ const conflict=s.sleep.find(r=>!r.deletedAt&&r.date===row.date&&r.id!==row.id);
+ if(conflict)throw Error('这一天已有睡眠记录，请返回列表编辑原记录，或修改归属日期');
+ const next={...(index>=0?s.sleep[index]:{}),...row,updatedAt:Date.now()};
+ if(index>=0)s.sleep[index]=next;else s.sleep.push(next);return next.id;
+}
+export function moveGroup(s,name,offset){const names=[...new Set(s.tasks.map(t=>t.group).filter(Boolean))];const order=[...(s.settings.groupOrder||[]).filter(g=>names.includes(g)),...names.filter(g=>!s.settings.groupOrder?.includes(g))];const i=order.indexOf(name),j=i+offset;if(i<0||j<0||j>=order.length)return;[order[i],order[j]]=[order[j],order[i]];s.settings.groupOrder=order;}
