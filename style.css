@@ -157,4 +157,3 @@ nav button.active{color:#1c1c17;font-weight:700}
 body:has(.sleep-page-head) #quick-add{display:none!important}
 .sleep-window-day{bottom:0}.sleep-window-day>small{bottom:-25px}.sleep-abnormal{position:absolute;bottom:0;left:50%;color:#b3261e}.sleep-window-grid[style*="30"] .sleep-window-bar{max-width:6px}
 .sleep-page-head{grid-template-columns:1fr auto}.sleep-back{font-size:14px;text-align:left;width:max-content}.sleep-add{font-size:15px;width:max-content;justify-self:end}
-/* deploy-pipeline-check 2026-09-22 */
